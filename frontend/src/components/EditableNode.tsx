@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Handle, NodeResizer, Position } from "reactflow";
+import { Handle, NodeResizer, Position, useStore } from "reactflow";
 
 // const handleStyle = { left: 10 };
 
@@ -24,6 +24,17 @@ function TextUpdaterNode({
     setText(newText);
     data.onUpdateNodeText(id, newText);
   };
+
+  // const size = useStore((s) => {
+  //   const node = s.nodeInternals.get(id);
+
+  //   return {
+  //     width: node.width,
+  //     height: node.height,
+  //   };
+  // });
+
+  // console.log(size);
 
   return (
     <div className="border border-black h-full rounded p-3">
