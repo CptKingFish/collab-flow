@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Handle, NodeResizer, Position, useStore } from "reactflow";
+import { useState } from "react";
+import { Handle, NodeResizer, Position } from "reactflow";
 
 // const handleStyle = { left: 10 };
 

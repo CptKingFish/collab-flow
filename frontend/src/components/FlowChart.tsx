@@ -13,6 +13,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import EditableNode from "./EditableNode";
 import DnDMenu from "./DnDMenu";
+import { socket } from "../socket";
 
 const nodeTypes = { editableNode: EditableNode };
 
@@ -30,7 +31,13 @@ const initialEdges = [];
 let id = 0;
 const getId = () => `dndnode_${id++}`;
 
-function FlowChart() {
+function FlowChart({
+  wsConnected,
+  updatedChart,
+}: {
+  wsConnected: boolean;
+  updatedChart: { nodes: any[]; edges: any[] };
+}) {
   const reactFlowWrapper = useRef(null);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
 
@@ -38,21 +45,67 @@ function FlowChart() {
   const [edges, setEdges] = useState(initialEdges);
 
   console.log(nodes);
+
+  const updateChart = useCallback(() => {
+    socket.timeout(5000).emit(
+      "chart-updated",
+      {
+        nodes,
+        edges,
+      },
+      () => {
+        // setIsLoading(false);
+      }
+    );
+  }, [edges, nodes]);
+
+  useEffect(() => {
+    if (!wsConnected) return;
+    // socket.timeout(5000).emit(
+    //   "chart-updated",
+    //   {
+    //     nodes,
+    //     edges,
+    //   },
+    //   () => {
+    //     // setIsLoading(false);
+    //   }
+    // );
+
+    function onChartUpdated({ nodes, edges }) {
+      setNodes(nodes);
+      setEdges(edges);
+    }
+
+    socket.on("chart-updated", onChartUpdated);
+  }, [wsConnected]);
+
+  // useEffect(() => {
+  //   if (!updatedChart.nodes || !updatedChart.edges) return;
+  //   setNodes(updatedChart.nodes);
+  //   setEdges(updatedChart.edges);
+  // }, [updatedChart]);
+
   const onDragOver = useCallback((event) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   }, []);
 
-  const onUpdateNodeText = useCallback((nodeId, text) => {
-    setNodes((nds) =>
-      nds.map((nd) => {
-        if (nd.id === nodeId) {
-          return { ...nd, data: { ...nd.data, label: text } };
-        }
-        return nd;
-      })
-    );
-  }, []);
+  const onUpdateNodeText = useCallback(
+    (nodeId, text) => {
+      setNodes((nds) =>
+        nds.map((nd) => {
+          if (nd.id === nodeId) {
+            return { ...nd, data: { ...nd.data, label: text } };
+          }
+          return nd;
+        })
+      );
+
+      updateChart();
+    },
+    [updateChart]
+  );
 
   const onDrop = useCallback(
     (event) => {
@@ -82,6 +135,8 @@ function FlowChart() {
         };
       };
       if (type === "editableNode") {
+        console.log("chuchcudcudhcs");
+
         newNode = {
           id: getId(),
           type,
@@ -102,8 +157,10 @@ function FlowChart() {
       }
 
       setNodes((nds) => nds.concat(newNode));
+
+      updateChart();
     },
-    [onUpdateNodeText, reactFlowInstance]
+    [onUpdateNodeText, reactFlowInstance, updateChart]
   );
 
   const flowKey = "example-flow";
@@ -131,35 +188,36 @@ function FlowChart() {
     restoreFlow();
   }, [setNodes, setViewport]);
 
-  //   useEffect(() => {
-  //     // check if node-1 is in nodes
-  //     // if not, add it
-  //     if (nodes.find((nd) => nd.id === "node-1")) return;
-  //     const node = {
-  //       id: "node-1",
-  //       type: "editableNode",
-  //       position: { x: 0, y: 0 },
-  //       className: "w-[200px] h-[100px]",
-  //       data: {
-  //         label: "hellofasdf asdf asdf asdf asdf sadf asdf asfsad fasdf",
-  //         onUpdateNodeText: onUpdateNodeText,
-  //       },
-  //     };
-  //     setNodes((nds) => [...nds, node]);
-  //   }, [nodes, onUpdateNodeText]);
-
   const onNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    []
+    (changes) => {
+      setNodes((nds) => applyNodeChanges(changes, nds));
+      updateChart();
+    },
+    [updateChart]
   );
+
+  const onNodesDelete = useCallback(
+    (changes) => {
+      setNodes((nds) => applyNodeChanges(changes, nds));
+      updateChart();
+    },
+    [updateChart]
+  );
+
   const onEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    []
+    (changes) => {
+      setNodes((nds) => applyNodeChanges(changes, nds));
+      updateChart();
+    },
+    [updateChart]
   );
 
   const onConnect = useCallback(
-    (params) => setEdges((eds) => addEdge(params, eds)),
-    []
+    (params) => {
+      setEdges((eds) => addEdge(params, eds));
+      updateChart();
+    },
+    [updateChart]
   );
 
   return (
@@ -168,6 +226,7 @@ function FlowChart() {
         <ReactFlow
           nodes={nodes}
           onNodesChange={onNodesChange}
+          onNodesDelete={onNodesDelete}
           edges={edges}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
