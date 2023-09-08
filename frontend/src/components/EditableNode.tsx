@@ -17,11 +17,9 @@ function TextUpdaterNode({
   selected: boolean;
   isConnectable: boolean;
 }) {
-  const [text, setText] = useState(data.label);
   const [isEditing, setIsEditing] = useState(false);
 
   const onTextChange = (newText: string) => {
-    setText(newText);
     data.onUpdateNodeText(id, newText);
   };
 
@@ -57,14 +55,14 @@ function TextUpdaterNode({
       >
         {isEditing ? (
           <textarea
-            value={text}
+            value={data.label}
             onChange={(e) => onTextChange(e.target.value)}
             onBlur={() => setIsEditing(false)}
             className="w-full h-full resize-none overflow-hidden nodrag"
             autoFocus
           />
         ) : (
-          <h4 className="break-words">{text}</h4>
+          <h4 className="break-words">{data.label}</h4>
         )}
       </div>
       {/* <Handle

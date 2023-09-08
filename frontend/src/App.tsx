@@ -4,7 +4,7 @@ import FlowChartProvider from "./components/FlowChartProvider";
 
 function App() {
   const [wsConnected, setWsConnected] = useState(socket.connected);
-  const [updatedChart, setUpdatedChart] = useState({});
+  // const [updatedChart, setUpdatedChart] = useState({});
 
   useEffect(() => {
     function onConnect() {
@@ -16,13 +16,13 @@ function App() {
       setWsConnected(false);
     }
 
-    function onChartUpdated({ nodes, edges }) {
-      setUpdatedChart({ nodes, edges });
-    }
+    // function onChartUpdated({ nodes, edges }) {
+    //   setUpdatedChart({ nodes, edges });
+    // }
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
-    socket.on("chart-updated", onChartUpdated);
+    // socket.on("chart-updated", onChartUpdated);
     socket.onAny((event, ...args) => {
       console.log(event, args);
     });
@@ -30,16 +30,13 @@ function App() {
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
-      socket.off("chart-updated", onChartUpdated);
+      // socket.off("chart-updated", onChartUpdated);
     };
   }, []);
 
   return (
     <div className="h-screen w-screen">
-      <FlowChartProvider
-        updatedChart={updatedChart}
-        wsConnected={wsConnected}
-      />
+      <FlowChartProvider wsConnected={wsConnected} />
     </div>
   );
 }

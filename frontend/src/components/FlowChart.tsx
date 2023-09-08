@@ -1,14 +1,20 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import ReactFlow, {
+  Node,
   Controls,
   Background,
   applyNodeChanges,
-  applyEdgeChanges,
   addEdge,
   MiniMap,
-  ReactFlowProvider,
   useReactFlow,
   Panel,
+  Edge,
+  OnNodesChange,
+  OnNodesDelete,
+  OnEdgesChange,
+  OnConnect,
+  NodeChange,
+  ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import EditableNode from "./EditableNode";
@@ -17,36 +23,22 @@ import { socket } from "../socket";
 
 const nodeTypes = { editableNode: EditableNode };
 
-const initialNodes = [
-  {
-    id: "1",
-    data: {
-      label:
-        "Hello dsaf asdf asdf asdf asdf asdfasdf asdf asdf asdf asdf asdf asfas",
-    },
-    position: { x: 0, y: 0 },
-  },
-];
-const initialEdges = [];
+const initialNodes: Node[] = [];
+const initialEdges: Edge[] = [];
 let id = 0;
 const getId = () => `dndnode_${id++}`;
 
-function FlowChart({
-  wsConnected,
-  updatedChart,
-}: {
-  wsConnected: boolean;
-  updatedChart: { nodes: any[]; edges: any[] };
-}) {
-  const reactFlowWrapper = useRef(null);
-  const [reactFlowInstance, setReactFlowInstance] = useState(null);
+function FlowChart({ wsConnected }: { wsConnected: boolean }) {
+  const reactFlowWrapper = useRef<HTMLInputElement>(null);
+  const [reactFlowInstance, setReactFlowInstance] =
+    useState<ReactFlowInstance | null>(null);
 
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
+  const [updateState, setUpdateState] = useState(false);
 
-  console.log(nodes);
-
-  const updateChart = useCallback(() => {
+  useEffect(() => {
+    if (!updateState) return;
     socket.timeout(5000).emit(
       "chart-updated",
       {
@@ -57,59 +49,82 @@ function FlowChart({
         // setIsLoading(false);
       }
     );
-  }, [edges, nodes]);
+
+    setUpdateState(false);
+  }, [nodes, edges, updateState]);
+
+  console.log(nodes);
+
+  const onUpdateNodeText = useCallback((nodeId: string, text: string) => {
+    setUpdateState(true);
+    setNodes((nds) =>
+      nds.map((nd) => {
+        if (nd.id === nodeId) {
+          return { ...nd, data: { ...nd.data, label: text } };
+        }
+        return nd;
+      })
+    );
+
+    // updateChart();
+  }, []);
 
   useEffect(() => {
     if (!wsConnected) return;
-    // socket.timeout(5000).emit(
-    //   "chart-updated",
-    //   {
-    //     nodes,
-    //     edges,
-    //   },
-    //   () => {
-    //     // setIsLoading(false);
-    //   }
-    // );
 
-    function onChartUpdated({ nodes, edges }) {
+    function onChartUpdated({
+      nodes,
+      edges,
+    }: {
+      nodes: Node[];
+      edges: Edge[];
+    }) {
+      // add onUpdateNodeText to editable nodes
+      nodes = nodes.map((nd) => {
+        if (nd.type === "editableNode") {
+          return {
+            ...nd,
+            data: {
+              ...nd.data,
+              onUpdateNodeText: onUpdateNodeText,
+            },
+          };
+        }
+        return nd;
+      });
+
       setNodes(nodes);
       setEdges(edges);
     }
 
     socket.on("chart-updated", onChartUpdated);
-  }, [wsConnected]);
 
-  // useEffect(() => {
-  //   if (!updatedChart.nodes || !updatedChart.edges) return;
-  //   setNodes(updatedChart.nodes);
-  //   setEdges(updatedChart.edges);
-  // }, [updatedChart]);
+    return () => {
+      socket.off("chart-updated", onChartUpdated);
+    };
+  }, [onUpdateNodeText, wsConnected]);
 
-  const onDragOver = useCallback((event) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-  }, []);
-
-  const onUpdateNodeText = useCallback(
-    (nodeId, text) => {
-      setNodes((nds) =>
-        nds.map((nd) => {
-          if (nd.id === nodeId) {
-            return { ...nd, data: { ...nd.data, label: text } };
-          }
-          return nd;
-        })
-      );
-
-      updateChart();
+  const onDragOver = useCallback(
+    (event: {
+      preventDefault: () => void;
+      dataTransfer: { dropEffect: string };
+    }) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
     },
-    [updateChart]
+    []
   );
 
   const onDrop = useCallback(
-    (event) => {
+    (event: {
+      preventDefault: () => void;
+      dataTransfer: { getData: (arg0: string) => never };
+      clientX: number;
+      clientY: number;
+    }) => {
       event.preventDefault();
+      if (!reactFlowWrapper.current || !reactFlowInstance) return;
+      // fix typescript error for line 138 and 146
 
       const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
       const type = event.dataTransfer.getData("application/reactflow");
@@ -135,8 +150,6 @@ function FlowChart({
         };
       };
       if (type === "editableNode") {
-        console.log("chuchcudcudhcs");
-
         newNode = {
           id: getId(),
           type,
@@ -156,11 +169,12 @@ function FlowChart({
         };
       }
 
+      setUpdateState(true);
       setNodes((nds) => nds.concat(newNode));
 
-      updateChart();
+      // updateChart();
     },
-    [onUpdateNodeText, reactFlowInstance, updateChart]
+    [onUpdateNodeText, reactFlowInstance]
   );
 
   const flowKey = "example-flow";
@@ -175,7 +189,8 @@ function FlowChart({
 
   const onRestore = useCallback(() => {
     const restoreFlow = async () => {
-      const flow = JSON.parse(localStorage.getItem(flowKey));
+      if (!localStorage.getItem(flowKey)) return;
+      const flow = JSON.parse(localStorage.getItem(flowKey) || "");
 
       if (flow) {
         const { x = 0, y = 0, zoom = 1 } = flow.viewport;
@@ -188,37 +203,25 @@ function FlowChart({
     restoreFlow();
   }, [setNodes, setViewport]);
 
-  const onNodesChange = useCallback(
-    (changes) => {
-      setNodes((nds) => applyNodeChanges(changes, nds));
-      updateChart();
-    },
-    [updateChart]
-  );
+  const onNodesChange: OnNodesChange = useCallback((changes) => {
+    setUpdateState(true);
+    setNodes((nds) => applyNodeChanges(changes, nds));
+  }, []);
 
-  const onNodesDelete = useCallback(
-    (changes) => {
-      setNodes((nds) => applyNodeChanges(changes, nds));
-      updateChart();
-    },
-    [updateChart]
-  );
+  const onNodesDelete: OnNodesDelete = useCallback((changes) => {
+    setUpdateState(true);
+    setNodes((nds) => applyNodeChanges(changes as NodeChange[], nds));
+  }, []);
 
-  const onEdgesChange = useCallback(
-    (changes) => {
-      setNodes((nds) => applyNodeChanges(changes, nds));
-      updateChart();
-    },
-    [updateChart]
-  );
+  const onEdgesChange: OnEdgesChange = useCallback((changes) => {
+    setUpdateState(true);
+    setNodes((nds) => applyNodeChanges(changes as NodeChange[], nds));
+  }, []);
 
-  const onConnect = useCallback(
-    (params) => {
-      setEdges((eds) => addEdge(params, eds));
-      updateChart();
-    },
-    [updateChart]
-  );
+  const onConnect: OnConnect = useCallback((params) => {
+    setUpdateState(true);
+    setEdges((eds) => addEdge(params, eds));
+  }, []);
 
   return (
     <>
@@ -232,7 +235,7 @@ function FlowChart({
           onConnect={onConnect}
           nodeTypes={nodeTypes}
           onInit={setReactFlowInstance}
-          onDrop={onDrop}
+          onDrop={onDrop as unknown as React.DragEventHandler<HTMLDivElement>}
           onDragOver={onDragOver}
           fitView
         >
