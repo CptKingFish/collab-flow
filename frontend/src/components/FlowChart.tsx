@@ -204,7 +204,13 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
   }, [setNodes, setViewport]);
 
   const onNodesChange: OnNodesChange = useCallback((changes) => {
+    // if dimensions are changed, don't update and wait for onResizeStop
+
     setUpdateState(true);
+
+    console.log("onNodesChange\n", changes);
+    console.log(changes[0].resizing);
+
     setNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
 
