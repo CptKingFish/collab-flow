@@ -21,7 +21,9 @@ import "reactflow/dist/style.css";
 import EditableNode from "./EditableNode";
 import DnDMenu from "./DnDMenu";
 import { socket } from "../socket";
-
+import DownloadButton from "./DownloadButton";
+import ContextMenu from "./ContextMenu";
+import '../index.css'
 
 
 const initialNodes: Node[] = [];
@@ -49,6 +51,55 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
     edges: edges,
   });
 
+  interface MenuState {
+    id: any;
+    top?: number;
+    left?: number;
+    right?: number;
+    bottom?: number;
+  }
+
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  type NewType = MouseEvent;
+
+  const onNodeContextMenu = useCallback(
+    (
+      event: React.MouseEvent<Element, NewType>,
+      node: { id: any }
+    ) => {
+      event.preventDefault();
+      const pane = ref.current?.getBoundingClientRect();
+
+      if (!pane) return;
+
+      let menuState: MenuState = {
+        id: node.id,
+      };
+
+      if (event.clientY < pane.height - 200) {
+        menuState.top = event.clientY;
+      } else {
+        menuState.bottom = pane.height - event.clientY;
+      }
+
+      if (event.clientX < pane.width - 200) {
+        menuState.left = event.clientX;
+      } else {
+        menuState.right = pane.width - event.clientX;
+      }
+
+      setMenu(menuState);
+    },
+    [setMenu]
+  );
+
+
+
+  // Close the context menu if it's open whenever the window is clicked.
+  const onPaneClick = useCallback(() => setMenu(null), [setMenu]);
+
 
   interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> { }
 
@@ -73,7 +124,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
   );
 
   const triggerUpdate = useCallback(
-    (n:Node[] = nodes , e:Edge[] = edges) => {
+    (n: Node[] = nodes, e: Edge[] = edges) => {
       setElements({ nodes: n, edges: e });
     },
     [setElements]
@@ -81,7 +132,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
 
   useEffect(() => {
     if (!updateState) return;
-    triggerUpdate(nodes,edges)
+    triggerUpdate(nodes, edges)
     socket.timeout(5000).emit(
       "chart-updated",
       {
@@ -266,7 +317,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
         setUpdateState(!(targetChange as any)[key]);
         break;
       } else {
-        
+
       }
     }
 
@@ -292,6 +343,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
     <>
       <div className="w-screen h-screen" ref={reactFlowWrapper}>
         <ReactFlow
+          ref={ref}
           nodes={nodes}
           onNodesChange={onNodesChange}
           onNodesDelete={onNodesDelete}
@@ -302,9 +354,12 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
           onInit={setReactFlowInstance}
           onDrop={onDrop as unknown as React.DragEventHandler<HTMLDivElement>}
           onDragOver={onDragOver}
+          onPaneClick={onPaneClick}
+          onNodeContextMenu={onNodeContextMenu}
           fitView
         >
           <MiniMap />
+          {menu && <ContextMenu onClick={onPaneClick} {...menu} />}
           <Background />
           <Controls />
         </ReactFlow>
@@ -315,6 +370,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
         </button>
         <button onClick={onRestore}>restore</button>
         <Buttons undo={undo} redo={redo} reset={reset} />
+        <DownloadButton />
       </Panel>
       <Panel position="top-left">
         <DnDMenu />
