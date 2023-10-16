@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, FC, ButtonHTMLAttributes } from "react";
+import useUndoable from 'use-undoable';
 import ReactFlow, {
   Node,
   Controls,
@@ -20,8 +21,10 @@ import "reactflow/dist/style.css";
 import EditableNode from "./EditableNode";
 import DnDMenu from "./DnDMenu";
 import { socket } from "../socket";
+import DownloadButton from "./DownloadButton";
+import ContextMenu from "./ContextMenu";
+import '../index.css'
 
-const nodeTypes = { editableNode: EditableNode };
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
@@ -29,6 +32,13 @@ let id = 0;
 const getId = () => `dndnode_${id++}`;
 
 function FlowChart({ wsConnected }: { wsConnected: boolean }) {
+  const nodeTypes = useMemo(
+    () => ({
+      editableNode: EditableNode,
+    }),
+    []
+  );
+
   const reactFlowWrapper = useRef<HTMLInputElement>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
@@ -36,9 +46,93 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [updateState, setUpdateState] = useState(false);
+  const [elements, setElements, { undo, redo, reset }] = useUndoable({
+    nodes: nodes,
+    edges: edges,
+  });
+
+  interface MenuState {
+    id: any;
+    top?: number;
+    left?: number;
+    right?: number;
+    bottom?: number;
+  }
+
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  type NewType = MouseEvent;
+
+  const onNodeContextMenu = useCallback(
+    (
+      event: React.MouseEvent<Element, NewType>,
+      node: { id: any }
+    ) => {
+      event.preventDefault();
+      const pane = ref.current?.getBoundingClientRect();
+
+      if (!pane) return;
+
+      let menuState: MenuState = {
+        id: node.id,
+      };
+
+      if (event.clientY < pane.height - 200) {
+        menuState.top = event.clientY;
+      } else {
+        menuState.bottom = pane.height - event.clientY;
+      }
+
+      if (event.clientX < pane.width - 200) {
+        menuState.left = event.clientX;
+      } else {
+        menuState.right = pane.width - event.clientX;
+      }
+
+      setMenu(menuState);
+    },
+    [setMenu]
+  );
+
+
+
+  // Close the context menu if it's open whenever the window is clicked.
+  const onPaneClick = useCallback(() => setMenu(null), [setMenu]);
+
+
+  interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> { }
+
+  const Button: FC<ButtonProps> = ({ children, ...props }) => (
+    <button {...props} className='j-button app gray mh-0-5r'>
+      {children}
+    </button>
+  );
+
+  interface ButtonsProps {
+    undo: () => void;
+    redo: () => void;
+    reset: () => void;
+  }
+
+  const Buttons: FC<ButtonsProps> = ({ undo, redo, reset }) => (
+    <div className='fixed top-16 right-16 flex flex-row'>
+      <Button onClick={() => undo()}>Undo</Button>
+      <Button onClick={() => redo()}>Redo</Button>
+      <Button onClick={() => reset()}>Reset</Button>
+    </div>
+  );
+
+  const triggerUpdate = useCallback(
+    (n: Node[] = nodes, e: Edge[] = edges) => {
+      setElements({ nodes: n, edges: e });
+    },
+    [setElements]
+  );
 
   useEffect(() => {
     if (!updateState) return;
+    triggerUpdate(nodes, edges)
     socket.timeout(5000).emit(
       "chart-updated",
       {
@@ -53,7 +147,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
     setUpdateState(false);
   }, [nodes, edges, updateState]);
 
-  console.log(nodes);
+
 
   const onUpdateNodeText = useCallback((nodeId: string, text: string) => {
     setUpdateState(true);
@@ -68,6 +162,14 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
 
     // updateChart();
   }, []);
+
+  useEffect(() => {
+    console.log(elements);
+    if (!elements) return;
+    setNodes(elements.nodes);
+    setEdges(elements.edges);
+    setUpdateState(true);
+  }, [elements]);
 
   useEffect(() => {
     if (!wsConnected) return;
@@ -204,12 +306,20 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
   }, [setNodes, setViewport]);
 
   const onNodesChange: OnNodesChange = useCallback((changes) => {
-    // if dimensions are changed, don't update and wait for onResizeStop
 
-    setUpdateState(true);
 
-    console.log("onNodesChange\n", changes);
-    console.log(changes[0].resizing);
+    //Dont send update when these changes are being done
+    const targetKeys: string[] = ['resizing', 'dragging'];
+
+    for (const key of targetKeys) {
+      const targetChange = changes.find(change => key in change);
+      if (targetChange) {
+        setUpdateState(!(targetChange as any)[key]);
+        break;
+      } else {
+
+      }
+    }
 
     setNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
@@ -233,6 +343,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
     <>
       <div className="w-screen h-screen" ref={reactFlowWrapper}>
         <ReactFlow
+          ref={ref}
           nodes={nodes}
           onNodesChange={onNodesChange}
           onNodesDelete={onNodesDelete}
@@ -243,9 +354,12 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
           onInit={setReactFlowInstance}
           onDrop={onDrop as unknown as React.DragEventHandler<HTMLDivElement>}
           onDragOver={onDragOver}
+          onPaneClick={onPaneClick}
+          onNodeContextMenu={onNodeContextMenu}
           fitView
         >
           <MiniMap />
+          {menu && <ContextMenu onClick={onPaneClick} {...menu} />}
           <Background />
           <Controls />
         </ReactFlow>
@@ -255,6 +369,8 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
           save
         </button>
         <button onClick={onRestore}>restore</button>
+        <Buttons undo={undo} redo={redo} reset={reset} />
+        <DownloadButton />
       </Panel>
       <Panel position="top-left">
         <DnDMenu />
