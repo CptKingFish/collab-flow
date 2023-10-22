@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo, FC, ButtonHTMLAttributes } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, FC, ButtonHTMLAttributes, use } from "react";
 import useUndoable from 'use-undoable';
 import ReactFlow, {
   Node,
@@ -20,10 +20,11 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import EditableNode from "./EditableNode";
 import DnDMenu from "./DnDMenu";
-import { socket } from "../socket";
+import { socket } from "../pages/socket";
 import DownloadButton from "./DownloadButton";
 import ContextMenu from "./ContextMenu";
-import '../index.css'
+
+
 
 
 const initialNodes: Node[] = [];
@@ -31,7 +32,7 @@ const initialEdges: Edge[] = [];
 let id = 0;
 const getId = () => `dndnode_${id++}`;
 
-function FlowChart({ wsConnected }: { wsConnected: boolean }) {
+function FlowChart(props: { shortcut: any, wsConnected: boolean }) {
   const nodeTypes = useMemo(
     () => ({
       editableNode: EditableNode,
@@ -64,6 +65,33 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
 
   type NewType = MouseEvent;
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.ctrlKey && event.key === 'z') {
+        undo();
+      } else if (event.ctrlKey && event.key === 'a') {
+        event.preventDefault();
+        selectAll();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Remove event listener on component unmount
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [undo]);
+
+  const selectAll = useCallback(() => {
+    //loop through nodes array and add a selected:true property to each node
+    setNodes((nds) => nds.map((nd) => {
+      return { ...nd, selected: true };
+    }
+    ));
+  }
+    , [])
+
   const onNodeContextMenu = useCallback(
     (
       event: React.MouseEvent<Element, NewType>,
@@ -94,6 +122,9 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
     },
     [setMenu]
   );
+
+
+
 
 
 
@@ -172,7 +203,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
   }, [elements]);
 
   useEffect(() => {
-    if (!wsConnected) return;
+    if (!props.wsConnected) return;
 
     function onChartUpdated({
       nodes,
@@ -204,7 +235,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
     return () => {
       socket.off("chart-updated", onChartUpdated);
     };
-  }, [onUpdateNodeText, wsConnected]);
+  }, [onUpdateNodeText, props.wsConnected]);
 
   const onDragOver = useCallback(
     (event: {
@@ -310,7 +341,6 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
 
     //Dont send update when these changes are being done
     const targetKeys: string[] = ['resizing', 'dragging'];
-
     for (const key of targetKeys) {
       const targetChange = changes.find(change => key in change);
       if (targetChange) {
@@ -319,6 +349,10 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
       } else {
 
       }
+    }
+    //Dont track click events into undo/redo
+    if (changes[0].type === 'position' && changes[0].position == null) {
+      setUpdateState(false);
     }
 
     setNodes((nds) => applyNodeChanges(changes, nds));
@@ -341,7 +375,7 @@ function FlowChart({ wsConnected }: { wsConnected: boolean }) {
 
   return (
     <>
-      <div className="w-screen h-screen" ref={reactFlowWrapper}>
+      <div className="w-screen h-screen bg-white text-black" ref={reactFlowWrapper}>
         <ReactFlow
           ref={ref}
           nodes={nodes}

@@ -43,7 +43,7 @@ export default function ContextMenu({
   }, [id, setNodes, setEdges]);
 
   return (
-    <div style={{ top, left, right, bottom }} className="context-menu" {...props}>
+    <div style={{ top, left, right, bottom }} className="bg-white border shadow-lg absolute z-10" {...props}>
       <p style={{ margin: '0.5em' }}>
         <small>node: {id}</small>
       </p>

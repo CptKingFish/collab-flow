@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { socket } from "./pages/socket";
-import FlowChartProvider from "./components/FlowChartProvider";
+import { socket } from "./socket";
+import FlowChartProvider from "../components/FlowChartProvider";
 
-function App() {
+
+export default function Home() {
   const [wsConnected, setWsConnected] = useState(socket.connected);
   // const [updatedChart, setUpdatedChart] = useState({});
 
@@ -32,13 +33,16 @@ function App() {
       socket.off("disconnect", onDisconnect);
       // socket.off("chart-updated", onChartUpdated);
     };
+
   }, []);
 
-  return (
-    <div className="h-screen w-screen">
-      <FlowChartProvider wsConnected={wsConnected} />
-    </div>
-  );
-}
 
-export default App;
+  return <>
+    <div className="h-screen w-screen bg-white text-black">
+
+      <FlowChartProvider wsConnected={wsConnected} />
+      
+
+    </div>
+  </>
+}
